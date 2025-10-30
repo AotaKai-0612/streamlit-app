@@ -1,0 +1,6 @@
+openai
+google-api-python-client
+tqdm
+pandas
+streamlit
+python-dotenv
