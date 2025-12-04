@@ -379,14 +379,19 @@ if "analysis_df_raw" in st.session_state:
 
     display_cols = ["コメント"] + [f"{f['key']}_score" for f in FEATURES] + ["総合コメント"]
     display_cols = [c for c in display_cols if c in df_filtered.columns]
-    st.dataframe(df_filtered[display_cols].reset_index(drop=True), use_container_width=True)
-
+    
+    # 表示用のDataFrameを作り、インデックスを1ずらす
+    df_display = df_filtered[display_cols].reset_index(drop=True)
+    df_display.index = df_display.index + 1  # ここで0始まりを1始まりに変更
+    
+    st.dataframe(df_display, use_container_width=True)
     st.download_button(
         "💾 フィルタ結果をCSVでダウンロード",
         df_filtered.to_csv(index=False).encode("utf-8"),
         file_name="filtered_comment_analysis.csv",
         mime="text/csv"
     )
+
 
 
 
