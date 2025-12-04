@@ -315,9 +315,9 @@ if "selected_video_id" in st.session_state:
     st.markdown(f"### 🎞️ 選択中: {st.session_state.get('selected_title','(no title)')}")
     st.video(f"https://www.youtube.com/watch?v={vid}")
 
-    if st.button("💬 コメント分析を実行（上限50件）"):
+    if st.button("💬 コメント分析を実行（上限100件）"):
         with st.spinner("コメントを取得してGPTで分析しています...（数十秒〜数分）"):
-            comments = get_comments(vid, max_comments=50)
+            comments = get_comments(vid, max_comments=100)
             if not comments:
                 st.error("コメントを取得できませんでした（コメント無効またはAPI制限の可能性）")
             else:
@@ -328,7 +328,7 @@ if "selected_video_id" in st.session_state:
                     row = normalize_analysis_to_row(analysis)
                     row["コメント"] = c
                     rows.append(row)
-                    time.sleep(0.3)
+                    # time.sleep(0.3)
                 df = pd.DataFrame(rows)
                 st.session_state["analysis_df_raw"] = df
                 st.success(f"{len(df)} 件のコメントを分析しました。")
@@ -365,5 +365,6 @@ if "analysis_df_raw" in st.session_state:
         file_name="filtered_comment_analysis.csv",
         mime="text/csv"
     )
+
 
 
