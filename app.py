@@ -8,6 +8,7 @@ import os
 import time
 import json
 import re
+import concurrent.futures
 
 load_dotenv()
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
@@ -143,7 +144,7 @@ def search_videos(query, max_results=6):
 
 # ------------------------
 # コメント取得
-def get_comments(video_id, max_comments=50):
+def get_comments(video_id, max_comments=100):
     comments = []
     try:
         request = youtube.commentThreads().list(
@@ -298,15 +299,21 @@ if query:
     if not videos:
         st.info("検索結果がありません。キーワードを変えて試してください。")
     else:
-        cols = st.columns(len(videos))
-        for i, v in enumerate(videos):
-            with cols[i]:
-                if v.get("thumbnail"):
-                    st.image(v["thumbnail"], use_container_width=True)
-                st.caption(v["title"])
-                if st.button("この動画を選択", key=v["video_id"]):
-                    st.session_state["selected_video_id"] = v["video_id"]
-                    st.session_state["selected_title"] = v["title"]
+        # グリッド表示（1行に3つずつ表示）
+        N_COLS = 3
+        for i in range(0, len(videos), N_COLS):
+            cols = st.columns(N_COLS)
+            for j in range(N_COLS):
+                if i + j < len(videos):
+                    v = videos[i + j]
+                    with cols[j]:
+                        if v.get("thumbnail"):
+                            st.image(v["thumbnail"], use_container_width=True)
+                        st.caption(v["title"])
+                        if st.button("この動画を選択", key=v["video_id"]):
+                            st.session_state["selected_video_id"] = v["video_id"]
+                            st.session_state["selected_title"] = v["title"]
+                            st.rerun() # 画面をリロードして検索結果を閉じる
 
 # ------------------------
 # 動画選択後
@@ -322,13 +329,28 @@ if "selected_video_id" in st.session_state:
                 st.error("コメントを取得できませんでした（コメント無効またはAPI制限の可能性）")
             else:
                 rows = []
-                for c in comments:
-                    analysis = analyze_comment(c)
-                    # DEBUG: もし結果が空っぽならここで st.write(analysis) を一時表示して確認できます
-                    row = normalize_analysis_to_row(analysis)
-                    row["コメント"] = c
-                    rows.append(row)
-                    # time.sleep(0.3)
+                # プログレスバー（進行状況バー）を追加すると親切です
+                progress_bar = st.progress(0)
+                
+                # 【ここが高速化の記述】10件同時にリクエストを投げます
+                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                    # 全件分のタスクを登録
+                    future_to_comment = {executor.submit(analyze_comment, c): c for c in comments}
+                    
+                    # 終わったものから順次処理
+                    for i, future in enumerate(concurrent.futures.as_completed(future_to_comment)):
+                        c = future_to_comment[future]
+                        try:
+                            analysis = future.result()
+                            row = normalize_analysis_to_row(analysis)
+                            row["コメント"] = c
+                            rows.append(row)
+                        except Exception as e:
+                            pass # エラー時はスキップ
+                        
+                        # 進捗バーを更新
+                        progress_bar.progress((i + 1) / len(comments))
+
                 df = pd.DataFrame(rows)
                 st.session_state["analysis_df_raw"] = df
                 st.success(f"{len(df)} 件のコメントを分析しました。")
@@ -365,6 +387,7 @@ if "analysis_df_raw" in st.session_state:
         file_name="filtered_comment_analysis.csv",
         mime="text/csv"
     )
+
 
 
 
