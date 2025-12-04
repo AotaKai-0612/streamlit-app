@@ -118,29 +118,32 @@ def normalize_analysis_to_row(analysis):
 
 # ------------------------
 # YouTube検索関数
-def search_videos(query, max_results=6):
+def search_videos(query, max_results=6, page_token=None):
     try:
         req = youtube.search().list(
-            part="snippet",
-            q=query,
-            type="video",
-            videoEmbeddable="true",
-            maxResults=max_results,
-            order="relevance"
+            part="snippet", q=query, type="video",
+            videoEmbeddable="true", maxResults=max_results, order="relevance",
+            pageToken=page_token  # ページ送り用トークン
         )
         res = req.execute()
     except Exception as e:
-        st.error(f"検索でエラー: {e}")
-        return []
+        st.error(f"検索エラー: {e}")
+        return [], None
+    
     results = []
     for item in res.get("items", []):
         vid = item.get("id", {}).get("videoId")
-        if not vid:
-            continue
+        if not vid: continue
         snip = item.get("snippet", {})
-        thumb = snip.get("thumbnails", {}).get("medium", {}).get("url")
-        results.append({"title": snip.get("title"), "video_id": vid, "thumbnail": thumb})
-    return results
+        results.append({
+            "title": snip.get("title"),
+            "video_id": vid,
+            "thumbnail": snip.get("thumbnails", {}).get("medium", {}).get("url")
+        })
+    
+    # 次のページがある場合、そのトークンを返す
+    next_token = res.get("nextPageToken")
+    return results, next_token
 
 # ------------------------
 # コメント取得
@@ -391,6 +394,7 @@ if "analysis_df_raw" in st.session_state:
         file_name="filtered_comment_analysis.csv",
         mime="text/csv"
     )
+
 
 
 
