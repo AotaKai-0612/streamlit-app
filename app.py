@@ -127,13 +127,13 @@ def search_videos(query, max_results=6, page_token=None):
     next_token = res.get("nextPageToken")
     return results, next_token
 
-def get_comments(video_id, max_comments=120):
+def get_comments(video_id, max_comments=100):
     comments = []
     try:
         request = youtube.commentThreads().list(
             part="snippet",
             videoId=video_id,
-            maxResults=120,
+            maxResults=100,
             textFormat="plainText",
             order="relevance"
         )
@@ -412,5 +412,6 @@ if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"]
         )
     else:
         st.warning("条件に合うコメントがありませんでした。")
+
 
 
