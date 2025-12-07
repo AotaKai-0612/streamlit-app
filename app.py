@@ -216,8 +216,9 @@ def analyze_comment(comment_text):
 
     最後に総合コメントとして、評価理由を簡潔に説明してください。
 
-    # 出力フォーマット（JSON）
+     # 出力フォーマット（JSON）
     必ず **有効なJSON形式** で出力してください。
+　　数値には「+」を付けず、引用符の閉じ忘れやコメントは入れないでください。
     {{
       "攻撃性": {{"score": 0-3 }},
       "挑発性": {{"score": 0-3 }},
@@ -441,4 +442,5 @@ if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"]
         )
     else:
         st.warning("条件に合うコメントがありませんでした。")
+
 
