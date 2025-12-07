@@ -126,8 +126,8 @@ def search_videos(query, max_results=6, page_token=None):
     next_token = res.get("nextPageToken")
     return results, next_token
 
-# 【修正】100件きっかり取るためにループ処理を強化
-def get_comments(video_id, max_comments=100):
+# 【修正】120件取得するように変更（表示時に100件に絞るため）
+def get_comments(video_id, max_comments=120):
     comments = []
     try:
         # 最初のページを取得
@@ -139,20 +139,20 @@ def get_comments(video_id, max_comments=100):
             order="relevance"
         )
         
-        # 100件集まるまで、または次のページがなくなるまでループ
+        # 指定件数集まるまで、または次のページがなくなるまでループ
         while request and len(comments) < max_comments:
             response = request.execute()
             for item in response.get("items", []):
                 try:
                     c = item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
                     comments.append(c)
-                    # 100件に達したら即終了
+                    # 指定件数に達したら即終了
                     if len(comments) >= max_comments:
                         break
                 except KeyError:
                     continue
             
-            # まだ100件未満なら次のページへ
+            # まだ指定件数未満なら次のページへ
             if len(comments) < max_comments:
                 request = youtube.commentThreads().list_next(request, response)
             else:
@@ -162,10 +162,8 @@ def get_comments(video_id, max_comments=100):
         st.warning(f"コメント取得エラー: {e}")
         return []
     
-    # 万が一取りすぎた場合に備えてスライス
     return comments[:max_comments]
 
-# 【修正】レベル基準を全体的に下げて、差が出やすくしたプロンプト
 def analyze_comment(comment_text):
     prompt = f"""
     あなたはYouTubeコメントを分析する専門家です。
@@ -241,7 +239,6 @@ def analyze_comment(comment_text):
         )
         raw = resp.choices[0].message.content.strip()
         
-        # 【修正】JSON整形処理（エラー回避）
         raw = re.sub(r"```json", "", raw)
         raw = re.sub(r"```", "", raw)
         raw = raw.strip()
@@ -276,6 +273,9 @@ elif preset == "議論モード":
 else:
     preset_ranges = {f["key"]:(f["min"], f["max"]) for f in FEATURES}
 
+# 【修正】カスタムモード以外はスライダーを操作不可にする
+is_disabled = (preset != "カスタム")
+
 threshold_ranges = {}
 with st.sidebar.expander("各特徴量の説明と閾値設定（範囲）", expanded=True):
     for f in FEATURES:
@@ -283,7 +283,13 @@ with st.sidebar.expander("各特徴量の説明と閾値設定（範囲）", exp
         st.markdown(f"**{key}** — {f['desc']}")
         min_v, max_v = f["min"], f["max"]
         init_min, init_max = preset_ranges.get(key, (min_v, max_v))
-        rng = st.slider(f"{key} の許容レンジ", min_v, max_v, (init_min, init_max))
+        rng = st.slider(
+            f"{key} の許容レンジ", 
+            min_v, 
+            max_v, 
+            (init_min, init_max),
+            disabled=is_disabled  # カスタム以外は操作不可
+        )
         threshold_ranges[key] = rng
 
 # 5. メインロジック ------------------------------
@@ -352,9 +358,11 @@ else:
     st.markdown(f"### 🎞️ 選択中: {st.session_state.get('selected_title','(no title)')}")
     st.video(f"https://www.youtube.com/watch?v={vid}")
 
-    if st.button("💬 コメント分析を実行（上限100件）"):
+    # ボタンの表示を修正（120件取得し100件表示）
+    if st.button("💬 コメント分析を実行（120件取得 → 100件表示）"):
         with st.spinner("コメントを取得してGPTで分析しています...（数十秒〜数分）"):
-            comments = get_comments(vid, max_comments=100)
+            # 【修正】120件取得
+            comments = get_comments(vid, max_comments=120)
             if not comments:
                 st.error("コメントを取得できませんでした（コメント無効またはAPI制限の可能性）")
             else:
@@ -397,7 +405,11 @@ if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"]
             mask &= True
     df_filtered = df[mask]
 
-    st.markdown(f"**表示件数:** {len(df_filtered)} / {len(df)} 件（閾値レンジで絞り込み）")
+    # 【修正】表示時に先頭100件に絞る
+    if len(df_filtered) > 100:
+        df_filtered = df_filtered.head(100)
+
+    st.markdown(f"**表示件数:** {len(df_filtered)} / 100 件（閾値レンジで絞り込み）")
 
     display_cols = ["コメント"] + [f"{f['key']}_score" for f in FEATURES] + ["総合コメント"]
     display_cols = [c for c in display_cols if c in df_filtered.columns]
