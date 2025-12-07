@@ -188,7 +188,7 @@ def analyze_comment(comment_text):
 
     ## 3. 有用性 (Usefulness)
     視聴者や動画にとって有益な価値があるか。
-    - **0: なし**: 中身のない相槌、単なる感情表現（「草」「すごい」のみ）。
+    - **0: なし**: 中身のない相槌、単なる感情表現（例：「草」「すごい」）。
     - **1: 低**: 根拠のない個人の感想。ただの文句。
     - **2: 中**: 具体的な指摘、改善提案、理由を伴う意見。
     - **3: 高**: **非常に論理的で、具体的な根拠や独自の深い視点に基づき、議論に貢献する極めて有益なコメント。**
@@ -358,11 +358,11 @@ else:
     st.markdown(f"### 🎞️ 選択中: {st.session_state.get('selected_title','(no title)')}")
     st.video(f"https://www.youtube.com/watch?v={vid}")
 
-    # ボタンの表示を修正（120件取得し100件表示）
-    if st.button("💬 コメント分析を実行（100件表示）"):
+    # ボタンの表示を修正（裏で120件取得するが、ユーザーには「100件」と見せる）
+    if st.button("💬 コメント分析を実行（上限100件）"):
         with st.spinner("コメントを取得してGPTで分析しています...（数十秒〜数分）"):
             # 【修正】120件取得
-            comments = get_comments(vid, max_comments=100)
+            comments = get_comments(vid, max_comments=120)
             if not comments:
                 st.error("コメントを取得できませんでした（コメント無効またはAPI制限の可能性）")
             else:
@@ -386,7 +386,9 @@ else:
 
                 df = pd.DataFrame(rows)
                 st.session_state["analysis_df_raw"] = df
-                st.success(f"{len(df)} 件のコメントを分析しました。")
+                # 【修正】ここを書き換えて、実際は120件以上取れていても100件と表示
+                display_len = min(len(df), 100) 
+                st.success(f"{display_len} 件のコメントを分析しました。")
 
 # 6. 結果表示 ---------------------------------
 if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"] is not None:
@@ -409,7 +411,12 @@ if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"]
     if len(df_filtered) > 100:
         df_filtered = df_filtered.head(100)
 
-    st.markdown(f"**表示件数:** {len(df_filtered)} / 100 件（閾値レンジで絞り込み）")
+    # 実際に表示する件数が100件になるように（もし100件以上あれば）調整
+    # 表示用の件数計算（フィルタリング結果が100件未満ならそのまま、100件以上なら100件）
+    display_count = len(df_filtered)
+    total_display_count = min(len(df), 100)
+
+    st.markdown(f"**表示件数:** {display_count} / {total_display_count} 件（閾値レンジで絞り込み）")
 
     display_cols = ["コメント"] + [f"{f['key']}_score" for f in FEATURES] + ["総合コメント"]
     display_cols = [c for c in display_cols if c in df_filtered.columns]
@@ -427,5 +434,3 @@ if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"]
         )
     else:
         st.warning("条件に合うコメントがありませんでした。")
-
-
