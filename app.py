@@ -100,7 +100,6 @@ def normalize_analysis_to_row(analysis):
 
 # 3. API関連関数 ---------------------------------------
 
-# 【改善点】「もっと見る」ボタンのためにページトークン対応を追加
 def search_videos(query, max_results=6, page_token=None):
     try:
         req = youtube.search().list(
@@ -143,70 +142,73 @@ def get_comments(video_id, max_comments=100):
                 try:
                     c = item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
                     comments.append(c)
+                    if len(comments) >= max_comments:
+                        break
                 except KeyError:
                     continue
+            
             if len(comments) < max_comments:
                 request = youtube.commentThreads().list_next(request, response)
             else:
                 break
+                
     except Exception as e:
         st.warning(f"コメント取得エラー: {e}")
         return []
     return comments[:max_comments]
 
-# 【重要修正】ここが今回の修正ポイントです！
+# 【修正版】レベル3が出やすくなるように定義を緩和したプロンプト
 def analyze_comment(comment_text):
     prompt = f"""
     あなたはYouTubeコメントを分析する専門家です。
     以下のルールに【厳密に】従って、指定されたYouTubeコメントを6つの特徴量で分析し、JSON形式で出力してください。
-    コメントの表面上の意味だけでなく、文脈的・反語的な意味（例：「良い動画なのでいいねを二回押しました！」などの皮肉表現）も考慮して評価してください。
+    コメントの表面上の意味だけでなく、文脈的・反語的な意味も考慮して評価してください。
 
-    # 分析ルール
+    # 分析ルール（評価基準の緩和版）
 
-    ##  1. 攻撃性 (Aggressiveness)
-    - **何を測るか**: コメントに含まれる、他者への直接的な敵意、侮辱、脅迫の度合い。
-    - **レベル0: なし**: 敬意が払われている、もしくは中立的。
-    - **レベル1: 低**: 相手を小馬鹿にする、見下すような表現。
-    - **レベル2: 中**: 明確な敵意や侮辱が含まれる。
-    - **レベル3: 高**: 脅迫、ヘイトスピーチなど。
+    ## 1. 攻撃性 (Aggressiveness)
+    - **何を測るか**: 他者への敵意、侮辱、暴言の強さ。
+    - **0: なし**: 敬意がある、または中立的。
+    - **1: 低**: 小馬鹿にする、見下すような表現。相手を少し不快にさせる程度。
+    - **2: 中**: 明確な悪口、嘲笑。「バカ」「ゴミ」などの侮辱語が含まれる。
+    - **3: 高**: **非常に激しい敵意、人格否定、差別的発言、または執拗な攻撃。**（※犯罪レベルでなくとも、誰もが強い不快感や恐怖を感じるレベルであれば3とする）
 
-    ##  2. 挑発性 (Provocation)
-    - **何を測るか**: 皮肉、嫌味、決めつけ、煽りなど。
-    - **レベル0: なし**: 誠実でストレートな表現。
-    - **レベル1: 低**: 軽度の皮肉や嫌味。
-    - **レベル2: 中**: 明確な「上から目線」、レッテル貼り。
-    - **レベル3: 高**: 議論を破壊する悪質な煽り。
+    ## 2. 挑発性 (Provocation)
+    - **何を測るか**: 皮肉、煽りなど、相手を感情的にさせる意図。
+    - **0: なし**: 誠実でストレートな表現。
+    - **1: 低**: 軽度の皮肉や嫌味。
+    - **2: 中**: 上から目線、レッテル貼り、相手を小馬鹿にして煽る表現。
+    - **3: 高**: **相手を激昂させることを主目的とした強い煽り、議論を破壊するような悪質な嘲笑。**
 
-    ##  3. 有用性 (Usefulness)
-    - **何を測るか**: 動画の内容や他の視聴者に対して、有益な価値を提供している度合い。
-    - **レベル0: なし**: 中身のない相槌や単なる感情表現。
-    - **レベル1: 低**: 具体的な根拠のない感想。
-    - **レベル2: 中**: 具体的な指摘、改善提案、根拠のある意見。
-    - **レベル3: 高**: 専門的な知識に基づく深い分析。
+    ## 3. 有用性 (Usefulness)
+    - **何を測るか**: 視聴者や動画にとって有益な価値があるか。
+    - **0: なし**: 中身のない相槌、単なる感情表現（「草」「すごい」など）。
+    - **1: 低**: 根拠のない個人の感想。
+    - **2: 中**: 具体的な指摘、改善提案、根拠のある意見。
+    - **3: 高**: **非常に論理的で、具体的な根拠や独自の深い視点に基づき、多くの視聴者に新たな気付きを与える極めて有益なコメント。**（※必ずしも専門家である必要はない）
 
-    ##  4. 感情極性 (Sentiment Polarity)
-    - **何を測るか**: コメント全体の感情的なトーン。
-    - **レベル-2: 強いネガティブ**: 強い怒り、憎しみ。
-    - **レベル-1: ネガティブ**: 批判、失望。
-    - **レベル0: 中立**: 事実の記述など。
-    - **レベル+1: ポジティブ**: 好意、感謝。
-    - **レベル+2: 強いポジティブ**: 感動、熱狂。
+    ## 4. 感情極性 (Sentiment Polarity)
+    - **-2: 強いネガティブ**: 激怒、強い憎しみ、深い失望。
+    - **-1: ネガティブ**: 批判、不満、皮肉。
+    - **0: 中立**: 事実の記述、質問。
+    - **+1: ポジティブ**: 好意、感謝、応援。
+    - **+2: 強いポジティブ**: 感動、熱狂、深い感謝、絶賛。
 
-    ##  5. 自己顕示性 (Self-display / Superiority)
-    - **何を測るか**: 自分の知識や経験などをアピールし、優位に立とうとする意図。
-    - **レベル0: なし**: アピールなし。
-    - **レベル1: 低**: 関連した体験談の共有。
-    - **レベル2: 中**: 専門知識や成功体験による暗黙のマウント。
-    - **レベル3: 高**: 経歴や年収による明確な見下し。
+    ## 5. 自己顕示性 (Self-display)
+    - **何を測るか**: 自分を優位に見せようとする意図。
+    - **0: なし**: アピールなし。
+    - **1: 低**: 関連した体験談の共有（役に立つ文脈）。
+    - **2: 中**: 知識や経験をひけらかし、暗にマウントを取る。
+    - **3: 高**: **他者を見下すことで自分を上げる表現が露骨なもの。経歴や年収を使った明確なマウント。**
 
-    ##  6. 文脈依存性 (Context-dependency / In-groupness)
-    - **何を測るか**: 内輪にしか真意が伝わらない専門用語や内輪ネタ。
-    - **レベル0: なし**: 誰でもわかる。
-    - **レベル1: 低**: 過去動画への言及など。
-    - **レベル2: 中**: ファン用語、ミーム。
-    - **レベル3: 高**: 背景知識がないと意味不明。
+    ## 6. 文脈依存性 (Context-dependency)
+    - **何を測るか**: 背景知識が必要か。
+    - **0: なし**: 誰でもわかる。
+    - **1: 低**: 過去動画への言及など（推測可能）。
+    - **2: 中**: ファン用語、ミーム、決まり文句。
+    - **3: 高**: **その動画や界隈の深い知識がないと、意味が全く理解できないもの。**
 
-    最後に総合コメントとして、評価理由を説明してください。
+    最後に総合コメントとして、評価理由を簡潔に説明してください。
 
     # 出力フォーマット（JSON）
     必ず **有効なJSON形式** で出力してください。
@@ -231,10 +233,6 @@ def analyze_comment(comment_text):
         )
         raw = resp.choices[0].message.content.strip()
         
-        # ----------------------------------------------------
-        # 【修正】GPTが ```json ... ``` という形式で返してきた場合に備えて
-        # 余計な文字を削除する処理を追加しました。これで直ります。
-        # ----------------------------------------------------
         raw = re.sub(r"```json", "", raw)
         raw = re.sub(r"```", "", raw)
         raw = raw.strip()
@@ -309,7 +307,6 @@ if st.session_state["selected_video_id"] is None:
         videos = st.session_state["search_results"]
         st.markdown(f"#### 検索結果 ({len(videos)}件 表示中)")
         
-        # グリッド表示 (3列)
         N_COLS = 3
         for i in range(0, len(videos), N_COLS):
             cols = st.columns(N_COLS)
@@ -328,7 +325,6 @@ if st.session_state["selected_video_id"] is None:
                             st.session_state["selected_title"] = v["title"]
                             st.rerun()
 
-        # 【改善点】もっと見るボタンの表示
         if st.session_state["next_page_token"]:
             st.divider()
             if st.button("⬇️ もっと動画を読み込む"):
@@ -356,7 +352,6 @@ else:
                 rows = []
                 progress_bar = st.progress(0)
                 
-                # 並列処理（ここも旧コードと同じ設定：Worker 10, エラーはスキップ）
                 with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                     future_to_comment = {executor.submit(analyze_comment, c): c for c in comments}
                     
@@ -398,7 +393,6 @@ if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"]
     display_cols = ["コメント"] + [f"{f['key']}_score" for f in FEATURES] + ["総合コメント"]
     display_cols = [c for c in display_cols if c in df_filtered.columns]
     
-    # 【改善点】インデックスを1から開始
     if len(df_filtered) > 0:
         df_display = df_filtered[display_cols].reset_index(drop=True)
         df_display.index = df_display.index + 1
