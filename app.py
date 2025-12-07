@@ -157,12 +157,12 @@ def get_comments(video_id, max_comments=120):
         return []
     return comments[:max_comments]
 
-# 【修正】旧コードの「厳しいフォーマット指示」＋「緩和版の評価基準」を合体
+# 【修正】旧コードの「厳しいフォーマット指示」を復活させつつ、緩和版の評価基準を適用
 def analyze_comment(comment_text):
     prompt = f"""
     あなたはYouTubeコメントを分析する専門家です。
     以下のルールに【厳密に】従って、指定されたYouTubeコメントを6つの特徴量で分析し、JSON形式で出力してください。
-    コメントの表面上の意味だけでなく、文脈的・反語的な意味（例：「良い動画なのでいいねを二回押しました！」などの皮肉表現）も考慮して評価してください。
+    文脈や皮肉（反語）も考慮して評価してください。
 
     # 分析ルール（評価基準の緩和版）
 
@@ -229,7 +229,7 @@ def analyze_comment(comment_text):
         )
         raw = resp.choices[0].message.content.strip()
         
-        # 旧コードと同じシンプルな処理に戻す（これが一番安定していた）
+        # 旧コードと同じシンプルな処理に戻す
         raw = re.sub(r"```json", "", raw)
         raw = re.sub(r"```", "", raw)
         raw = raw.strip()
@@ -360,7 +360,7 @@ else:
                 rows = []
                 progress_bar = st.progress(0)
                 
-                # 並列処理（旧コードと同じWorker 10, エラーはpass）
+                # 並列処理
                 with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                     future_to_comment = {executor.submit(analyze_comment, c): c for c in comments}
                     
