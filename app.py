@@ -359,7 +359,7 @@ else:
     st.video(f"https://www.youtube.com/watch?v={vid}")
 
     # ボタンの表示を修正（120件取得し100件表示）
-    if st.button("💬 コメント分析を実行（120件取得 → 100件表示）"):
+    if st.button("💬 コメント分析を実行（100件表示）"):
         with st.spinner("コメントを取得してGPTで分析しています...（数十秒〜数分）"):
             # 【修正】120件取得
             comments = get_comments(vid, max_comments=120)
@@ -427,3 +427,4 @@ if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"]
         )
     else:
         st.warning("条件に合うコメントがありませんでした。")
+
