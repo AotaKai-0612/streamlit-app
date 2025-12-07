@@ -362,7 +362,7 @@ else:
     if st.button("💬 コメント分析を実行（100件表示）"):
         with st.spinner("コメントを取得してGPTで分析しています...（数十秒〜数分）"):
             # 【修正】120件取得
-            comments = get_comments(vid, max_comments=120)
+            comments = get_comments(vid, max_comments=100)
             if not comments:
                 st.error("コメントを取得できませんでした（コメント無効またはAPI制限の可能性）")
             else:
@@ -427,4 +427,5 @@ if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"]
         )
     else:
         st.warning("条件に合うコメントがありませんでした。")
+
 
