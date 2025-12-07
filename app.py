@@ -126,33 +126,28 @@ def search_videos(query, max_results=6, page_token=None):
     next_token = res.get("nextPageToken")
     return results, next_token
 
-# 120件取得するように変更（表示時に100件に絞るため）
+# 120件取得
 def get_comments(video_id, max_comments=120):
     comments = []
     try:
-        # 最初のページを取得
         request = youtube.commentThreads().list(
             part="snippet",
             videoId=video_id,
-            maxResults=100, # 一度のリクエストでの最大数
+            maxResults=100,
             textFormat="plainText",
             order="relevance"
         )
-        
-        # 指定件数集まるまで、または次のページがなくなるまでループ
         while request and len(comments) < max_comments:
             response = request.execute()
             for item in response.get("items", []):
                 try:
                     c = item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
                     comments.append(c)
-                    # 指定件数に達したら即終了
                     if len(comments) >= max_comments:
                         break
                 except KeyError:
                     continue
             
-            # まだ指定件数未満なら次のページへ
             if len(comments) < max_comments:
                 request = youtube.commentThreads().list_next(request, response)
             else:
@@ -164,6 +159,7 @@ def get_comments(video_id, max_comments=120):
     
     return comments[:max_comments]
 
+# 【修正】JSONパースを段階的かつ安全に行うロジック
 def analyze_comment(comment_text):
     prompt = f"""
     あなたはYouTubeコメントを分析する専門家です。
@@ -216,9 +212,8 @@ def analyze_comment(comment_text):
 
     最後に総合コメントとして、評価理由を簡潔に説明してください。
 
-     # 出力フォーマット（JSON）
+    # 出力フォーマット（JSON）
     必ず **有効なJSON形式** で出力してください。
-　　数値には「+」を付けず、引用符の閉じ忘れやコメントは入れないでください。
     {{
       "攻撃性": {{"score": 0-3 }},
       "挑発性": {{"score": 0-3 }},
@@ -239,11 +234,35 @@ def analyze_comment(comment_text):
             temperature=0.2
         )
         raw = resp.choices[0].message.content.strip()
-    　  
+        
+        # 【修正】段階的パース処理
+        # 1. まずそのままパースを試みる（これが一番安全）
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
-            return {"raw_output": raw}
+            pass # 失敗したら次へ
+
+        # 2. マークダウンの ```json 等を削除して再トライ
+        clean_raw = re.sub(r"```[a-zA-Z]*", "", raw).strip()
+        try:
+            return json.loads(clean_raw)
+        except json.JSONDecodeError:
+            pass
+
+        # 3. 最後の手段：最初の中括弧 { から 最後の中括弧 } までを抽出
+        # 欲張りマッチ(.*)ではなく、非貪欲マッチ(.*?)にするか、シンプルにfindで探す
+        start = raw.find('{')
+        end = raw.rfind('}')
+        if start != -1 and end != -1 and end > start:
+            json_str = raw[start : end+1]
+            try:
+                return json.loads(json_str)
+            except json.JSONDecodeError:
+                pass
+        
+        # ここまで来たら本当にダメなので生データを返す
+        return {"raw_output": raw}
+
     except Exception as e:
         return {"error": str(e)}
 
@@ -270,7 +289,7 @@ elif preset == "議論モード":
 else:
     preset_ranges = {f["key"]:(f["min"], f["max"]) for f in FEATURES}
 
-# カスタムモード以外はスライダーを操作不可にする
+# カスタム以外は操作不可
 is_disabled = (preset != "カスタム")
 
 threshold_ranges = {}
@@ -285,7 +304,7 @@ with st.sidebar.expander("各特徴量の説明と閾値設定（範囲）", exp
             min_v, 
             max_v, 
             (init_min, init_max),
-            disabled=is_disabled  # カスタム以外は操作不可
+            disabled=is_disabled
         )
         threshold_ranges[key] = rng
 
@@ -332,7 +351,7 @@ if st.session_state["selected_video_id"] is None:
                         if len(title_disp) > 30: title_disp = title_disp[:30] + "..."
                         st.caption(title_disp)
                         
-                        # 【修正】キー重複エラー対策: keyにインデックスを含める
+                        # 【修正】重複キーエラー対策
                         if st.button("選択", key=f"select_{v['video_id']}_{i+j}"):
                             st.session_state["selected_video_id"] = v["video_id"]
                             st.session_state["selected_title"] = v["title"]
@@ -383,7 +402,7 @@ else:
 
                 df = pd.DataFrame(rows)
                 st.session_state["analysis_df_raw"] = df
-                # メッセージは「100件」に見せる
+                # 表示用メッセージ
                 display_len = min(len(df), 100) 
                 st.success(f"{display_len} 件のコメントを分析しました。")
 
@@ -399,16 +418,17 @@ if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"]
         low, high = threshold_ranges.get(key, (f["min"], f["max"]))
         if score_col in df.columns:
             s = pd.to_numeric(df[score_col], errors="coerce")
-            # NaNも表示に含める（分析エラーで消さない）
+            # 【重要】スコアがNaN(分析失敗)の行も隠さずに表示する
             mask &= s.isna() | ((s >= float(low)) & (s <= float(high)))
         else:
             mask &= True
     df_filtered = df[mask]
 
-    # 表示時に先頭100件に絞る
+    # 先頭100件に絞る
     if len(df_filtered) > 100:
         df_filtered = df_filtered.head(100)
 
+    # 100件表示のラベル
     display_count = len(df_filtered)
     total_display_count = min(len(df), 100)
 
@@ -430,6 +450,3 @@ if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"]
         )
     else:
         st.warning("条件に合うコメントがありませんでした。")
-
-
-
