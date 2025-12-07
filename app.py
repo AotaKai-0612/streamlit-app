@@ -239,8 +239,16 @@ def analyze_comment(comment_text):
         )
         raw = resp.choices[0].message.content.strip()
         
-        raw = re.sub(r"```json", "", raw)
-        raw = re.sub(r"```", "", raw)
+        # 【修正】JSON抽出ロジックを強化（余計な文字が含まれても動くようにする）
+        # 1. マークダウンのコードブロックを削除
+        raw = re.sub(r"```[a-zA-Z]*", "", raw)
+        
+        # 2. 最初の中括弧 { から 最後の中括弧 } までを抽出
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            raw = match.group(0)
+        
+        # 3. 余分な空白を削除
         raw = raw.strip()
 
         try:
@@ -433,3 +441,4 @@ if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"]
         )
     else:
         st.warning("条件に合うコメントがありませんでした。")
+
