@@ -133,7 +133,7 @@ def get_comments(video_id, max_comments=100):
         request = youtube.commentThreads().list(
             part="snippet",
             videoId=video_id,
-            maxResults=100,
+            maxResults=120,
             textFormat="plainText",
             order="relevance"
         )
@@ -154,7 +154,6 @@ def get_comments(video_id, max_comments=100):
         return []
     return comments[:max_comments]
 
-# 【重要修正】ここが今回の修正ポイントです！
 def analyze_comment(comment_text):
     prompt = f"""
     あなたはYouTubeコメントを分析する専門家です。
@@ -413,3 +412,4 @@ if "analysis_df_raw" in st.session_state and st.session_state["analysis_df_raw"]
         )
     else:
         st.warning("条件に合うコメントがありませんでした。")
+
